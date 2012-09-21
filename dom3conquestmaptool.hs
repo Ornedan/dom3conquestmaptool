@@ -13,10 +13,10 @@ import Data.Array.Repa.IO.DevIL
 import Data.Map (Map)
 import Data.Maybe
 import Foreign
+import System.Directory
 import System.Environment
 import System.Exit
 import System.IO
-import System.Posix.Files
 
 import Config
 import Types
@@ -46,8 +46,8 @@ main = do
   floodfill conf provs img
   
   -- DevIL refuses to overwrite files, so delete the target file first if it exists
-  whenM (fileExist outPath) $
-    removeLink outPath
+  whenM (doesFileExist outPath) $
+    removeFile outPath
   
   -- Save modified image to file
   runIL $ writeImage outPath img

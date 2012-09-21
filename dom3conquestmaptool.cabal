@@ -18,7 +18,7 @@ Executable dom3conquestmaptool
 
   Other-modules: Config Types
 
-  Build-depends: base, bytestring, containers, repa, repa-devil, unix,
+  Build-depends: base, bytestring, containers, directory, repa, repa-devil,
                  transformers, yaml
 
   GHC-Options: -rtsopts=all -with-rtsopts=-N -threaded -auto-all
