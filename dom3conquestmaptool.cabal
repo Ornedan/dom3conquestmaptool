@@ -1,0 +1,25 @@
+Name:                dom3conquestmaptool
+Version:             0.1
+Synopsis:            Colour a map image by province ownerships
+
+License:             BSD3
+License-file:        LICENSE
+
+Author:              Heikki Aitakangas
+Maintainer:          ornedan@gmail.com
+
+Category:            Game
+Build-type:          Simple
+Cabal-version:       >=1.2
+
+
+Executable dom3conquestmaptool
+  Main-is: dom3conquestmaptool.hs
+
+  Other-modules: Config Types
+
+  Build-depends: base, bytestring, containers, repa, repa-devil, unix,
+                 transformers, yaml
+
+  GHC-Options: -rtsopts=all -with-rtsopts=-N -threaded -auto-all
+               --eventlog -debug
