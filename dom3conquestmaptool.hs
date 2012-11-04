@@ -1,26 +1,28 @@
+{-# LANGUAGE RankNTypes, ScopedTypeVariables #-}
+
 module Main where
 
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 
-import Control.Arrow
-import Control.Exception
 import Control.Monad
+import Control.Monad.Trans.Class
 import Control.Monad.Trans.RWS.Strict
+import Control.Monad.ST
 import Data.Array.Repa
 import Data.Array.Repa.Repr.ForeignPtr
 import Data.Array.Repa.IO.DevIL
+import Data.Array.ST
 import Data.Map (Map)
-import Data.Maybe
-import Foreign
+import Data.Word
+import Foreign (pokeElemOff, withForeignPtr)
 import System.Directory
 import System.Environment
 import System.Exit
-import System.IO
-import Text.Printf
 
 import Config
 import Types
+
+
 
 
 --------------------------------------------------------------------------------
@@ -124,12 +126,22 @@ seek :: Config -> Array F DIM3 Word8 ->
         Int -> Int -> Int ->
         Int -> Int ->
         [(Int, Int)]
-seek conf pixs rc gc bc y0 x0 = snd $ execRWS (seek' y0 x0) () Set.empty
+seek conf pixs rc gc bc y0 x0 = runST $ do
+  visited0 <- newArray ((0,0), (maxY, maxX)) False
+  
+  execRWST (seek' y0 x0) visited0 [] >>= return . fst
+  
   where
     Z :. maxY :. maxX :. chans = extent pixs
     
-    visit y x = modify $ Set.insert (y, x)
-    isVisited y x = gets $ Set.member (y, x)
+    visit y x = do
+      arr <- ask
+      lift $ writeArray arr (y, x) True
+    isVisited y x =  do
+      arr <- ask
+      lift $ readArray arr (y, x)
+    
+    found y x = modify $ ((y,x):)
     
     isBorder y x =
       let r = pixs `unsafeIndex` ix3 y x rc
@@ -140,19 +152,18 @@ seek conf pixs rc gc bc y0 x0 = snd $ execRWS (seek' y0 x0) () Set.empty
          g == green (borderColour conf) &&
          b == blue  (borderColour conf)
     
-    inBounds y x =
-      let is = y >= 0 && y < maxY &&
-               x >= 0 && x < maxX
-      in if is
-         then Just (y, x)
-         else if wraparound conf
-              then Just ((y + maxY) `mod` maxY, (x + maxX) `mod` maxX)
-              else Nothing
+    inBounds y x = y >= 0 && y < maxY && x >= 0 && x < maxX
     
+    wrap y x =
+      if wraparound conf
+      then ((y + maxY) `mod` maxY, (x + maxX) `mod` maxX)
+      else (y, x)
+    
+    seek' :: Int -> Int -> RWST (STUArray s (Int, Int) Bool) () [(Int, Int)] (ST s) ()
     seek' y x = do
       -- Do nothing if we've already visited
-      visited <- isVisited y x
-      when (not visited) $ do
+      beenHere <- isVisited y x
+      when (inBounds y x && not beenHere) $ do
         -- Mark this pixel visited
         visit y x
         
@@ -160,17 +171,18 @@ seek conf pixs rc gc bc y0 x0 = snd $ execRWS (seek' y0 x0) () Set.empty
         border <- isBorder y x
         when (not border) $ do
           -- Add this pixel to the ones we need to colour
-          tell [(y, x)]
+          found y x
           
           -- Walk to the neighbouring pixels
-          let up    = inBounds (y + 1) x
-              down  = inBounds (y - 1) x
-              right = inBounds y (x + 1)
-              left  = inBounds y (x - 1)
-          when (isJust up)    $ uncurry seek' $ fromJust up
-          when (isJust down)  $ uncurry seek' $ fromJust down
-          when (isJust right) $ uncurry seek' $ fromJust right
-          when (isJust left)  $ uncurry seek' $ fromJust left
+          --- Up
+          uncurry seek' $ wrap (y + 1) x
+          --- Down
+          uncurry seek' $ wrap (y - 1) x
+          --- Right
+          uncurry seek' $ wrap y (x + 1)
+          --- Left
+          uncurry seek' $ wrap y (x - 1)
+
 
 whenM :: Monad m => m Bool -> m () -> m ()
 whenM pred act = pred >>= flip when act
